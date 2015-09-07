@@ -1,0 +1,95 @@
+questions
+what exactly is rdd?
+type of data?
+attributes that rdd has -in memory -partitioned across cluster -read only
+rdd partial results in memory?
+or is it more of a function as a argument makes it rdd?
+
+rdd log operations, so recreate data if failure (resiliant, lineage)
+
+
+
+memory has to large enough to include what?
+
+"spark should work well if given enough memory to store the entire working set of data."
+
+
+work on small data first then do it again with large data?
+
+when does hadoop outperform spark?
+
+I saw online intermediate steps?
+
+
+what happens when memory not big enough for rdd? just spill?
+
+
+
+
+
+./spark-ec2 -k 15319demo -i /home/itsmadpig/Desktop/aws_keys/15319demo.pem -s 4 --region=us-east-1 --zone=us-east-1a --vpc-id=vpc-0a3a556f --subnet-id=subnet-95b465be --instance-type=r3.xlarge --master-instance-type=r3.large --spot-price=0.5 --copy-aws-credentials --spark-version=1.3.0 launch my-spark-cluster
+
+./spark-ec2 -k 15319demo -i /home/itsmadpig/Desktop/aws_keys/15319demo.pem login my-spark-cluster
+
+val tsv4 = file.map(_.replaceAll("\\<.*\\>","").replace("\\n","").split("\t")(3))
+val tsv4 = file.map(_ => (_.split("\t")(1), _.flatMap(_.replaceAll("\\<.*\\>","").replace("\\n"," ").replaceAll("[^A-Za-z\\s]"," ").split("\t")(4).toLowerCase.split("\\s+")).map(word => (word,1)).reduceByKey(_+_)))
+
+tsv4.first()
+tsv4.toArray().foreach(line=>println(line))
+tsv4.distinct().count()
+
+
+val file = sc.textFile("/home/itsmadpig/Desktop/4.2/1liner")
+
+
+
+
+import scala.collection.mutable
+import math.log
+
+
+/*def getTF(s:String):List[((String,String),Int)] = {
+    val lst = s.split("\t")
+    val rtn1 = lst(1)
+    val rtn2 = lst(4).replaceAll("\\\\n"," ").toLowerCase().replaceAll("[^A-Za-z\\s]"," ").split("\\s+")
+    val buf = new scala.collection.mutable.ListBuffer[((String,String),Int)]
+    rtn2.foreach(elem => buf+=(((elem,rtn1),1)))
+    return (buf.toList)
+}
+*/
+
+//val file = sc.textFile("s3n://madpigaaron/project4part2/1liner")
+
+//.toArray().foreach(line=>println(line))
+val file = sc.textFile("s3n://s15-p42-part1-easy/data/")
+
+//val tf = file.flatMap(getTF).reduceByKey(_+_)
+
+val tf = file.flatMap(line => line.split("\t")(3).replaceAll("\\<.*?\\>"," ").replace("\\n"," ").toLowerCase().replaceAll("[^A-Za-z\\s]"," ").split("\\s+").map(wd => ((wd,line.split("\t")(1)),1))).reduceByKey(_+_)
+//tf.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+//val totalDocCount = tf.map{case ((word,title),ct) => (title,1)}.reduceByKey((x,y) => 1).count()
+val totalDocCount = tf.map{case ((word,title),ct) => title}.distinct.count()
+val wordDocCount = tf.map{case ((word,title),ct) => (word,1)}.reduceByKey((x,y)=>x+y)
+//wordDocCount.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+val tfidf = wordDocCount.join(tf.map {
+  case ((word, title), ct) => (word, (title, ct))
+}).map {
+  case (word, (wdct, (title, ct))) => ((word, title),ct*log(totalDocCount/wdct))
+}.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+
+//tf.unpersist()
+//wordDocCount.unpersist()
+
+val filtered = tfidf.filter(x => x._1._1 == "yes").collect()
+val top100 = filtered.sortBy(x => (x._2,x._1._2))(Ordering.Tuple2(Ordering.Double.reverse, Ordering.String)).take(100)
+top100.foreach(line=>println(line))
+
+
+
+
+
+
+
+
+
+
